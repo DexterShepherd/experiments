@@ -1830,10 +1830,6 @@ p5@^0.5.4:
     opentype.js "^0.4.9"
     reqwest "^1.1.5"
 
-p5util:
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/p5util/-/p5util-1.0.0.tgz#1584c20caf60e87e3b4e22e5dbad5e2d4f25d3ce"
-
 pako@~0.2.0:
   version "0.2.9"
   resolved "https://registry.yarnpkg.com/pako/-/pako-0.2.9.tgz#f3f7522f4ef782348da8161bad9ecfd51bf83a75"
