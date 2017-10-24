@@ -1,24 +1,24 @@
 const regl = require('regl')()
 
-const radius = 256
-
-// const reactionParams = {
-//   diffusion: {
-//     a: 1.384892317009904,
-//     b: 1.861198901292049,
-//   },
-//   feed: 0.006555690359198,
-//   kill: 0.2780614695012526
-// }
+const radius = 2048
 
 const reactionParams = {
   diffusion: {
-    a: 1.0,
-    b: 0.5,
+    a: 1.384892317009904,
+    b: 1.861198901292049,
   },
-  feed: 0.055,
-  kill: 0.0062
+  feed: 0.006555690359198,
+  kill: 0.2780614695012526
 }
+
+// const reactionParams = {
+//   diffusion: {
+//     a: 1.0,
+//     b: 0.5,
+//   },
+//   feed: 0.055,
+//   kill: 0.062
+// }
 
 const state = (Array(2)).fill().map(() =>
   regl.framebuffer({
@@ -37,43 +37,82 @@ const updateLife = regl({
   precision mediump float;
   uniform sampler2D prevState;
   uniform mat3 weights;
+  uniform mat3 neighX;
+  uniform mat3 neighY;
   uniform float diffusionA;
   uniform float diffusionB;
-  uniform float kill;
-  uniform float feed;
+  uniform float feed_rate;
+  uniform float kill_rate;
   uniform float delta;
+
+  uniform float time, viewportWidth, viewportHeight, viewportRatio, neighborX, neighborY;
   varying vec2 uv;
 
   vec2 laplace() {
+    vec4 s = texture2D(prevState, uv);
     vec2 sum = vec2(0.0);
-    for( int x = -1; x < 2; x++ ) {
-      for( int y = -1; y < 2; y++ ) {
-        vec4 n = texture2D(prevState, uv + vec2(x, y) / float(${radius}));
-        sum.x += n.r * weights[x + 1][y + 1];
-        sum.y += n.g * weights[x + 1][y + 1];
+
+    for( int x = 0; x < 3; x++ ) {
+      for( int y = 0; y < 3; y++ ) {
+
+        vec4 n = texture2D(prevState, uv + vec2(neighX[x][y], neighY[x][y]) / float(${radius}));
+        sum.x += n.r * weights[x][y];
+        sum.y += n.g * weights[x][y];
       }
     }
     return sum;
+
   }
   
   void main() {
-    vec4 s = texture2D(prevState, uv);
+    // vec4 s = texture2D(prevState, uv);
+    // vec2 lap = laplace();
+    // float reaction = s.r * s.g * s.g;
+    // float a = (s.r +
+    //           (diffusionA * lap.x * lap.x) -
+    //           reaction +
+    //           (feed * (1.0 - s.r)));
+
+    // float b = (s.g +
+    //           (diffusionB * lap.y * lap.y) +
+    //           reaction -
+    //           ((kill + feed) * s.g));
+
+    // a = clamp(a, 0.0, 1.0);
+    // b = clamp(b, 0.0, 1.0);
+    
+    vec4 center = texture2D(prevState, uv);
+    float a = center.x;
+    float b = center.y;
+
     vec2 lap = laplace();
-    float reaction = s.r * s.g * s.g;
-    float a = (s.r +
-              (diffusionA * lap.x * lap.x) -
-              reaction +
-              (feed * (1.0 - s.r)));
 
-    float b = (s.g +
-              (diffusionB * lap.y * lap.y) +
-              reaction -
-              ((kill + feed) * s.g));
+    // vec4 adjacentNeighbors = 0.20 * (
+    //   texture2D(prevState, uv + vec2(neighborX, 0.0)) +
+    //   texture2D(prevState, uv + vec2(0.0, neighborY)) +
+    //   texture2D(prevState, uv + vec2(-neighborX, 0.0)) +
+    //   texture2D(prevState, uv + vec2(0.0, -neighborY))
+    // );
 
-    a = clamp(a, 0.0, 1.0);
-    b = clamp(b, 0.0, 1.0);
+    // vec4 cornerNeighbors = 0.05 * (
+    //   texture2D(prevState, uv + vec2(neighborX, neighborY)) +
+    //   texture2D(prevState, uv + vec2(neighborX, -neighborY)) +
+    //   texture2D(prevState, uv + vec2(-neighborX, -neighborY)) +
+    //   texture2D(prevState, uv + vec2(-neighborX, neighborY))
+    // );
 
-    gl_FragColor = vec4(a, b, 0, 1.0);
+    // float laplacianA =  -a + adjacentNeighbors.x + cornerNeighbors.x;
+    // float laplacianB =  -b + adjacentNeighbors.y + cornerNeighbors.y;
+    float reaction = a * b * b;
+    float feed = (feed_rate) * (1.0 - a);
+    float kill = (kill_rate + feed_rate) * b;
+
+    gl_FragColor = vec4(
+      a + 0.001 + (diffusionA * lap.x - reaction + feed),
+      b + (diffusionB * lap.y + reaction - kill),
+      0.0,
+      1.0
+    );
   }
   `,
 
@@ -81,15 +120,30 @@ const updateLife = regl({
 
   uniforms: {
     weights: [
-      0.05, 0.2, 0.05,
-      0.2, -1.0, 0.2,
+      0.05, 0.20, 0.05,
+      0.3, -1.0, 0.1,
       0.05, 0.2, 0.05
+    ],
+    neighX: [
+      -1, 0, 1,
+      -1, 0, 1,
+      -1, 0, 1
+    ],
+    neighY: [
+      -1, -1, -1,
+      0, 0, 0,
+      1, 1, 1
     ],
     diffusionA: reactionParams.diffusion.a,
     diffusionB: reactionParams.diffusion.b,
-    kill: reactionParams.kill,
-    feed: reactionParams.feed,
-    delta: ({time}) => time - lastTime
+    kill_rate: reactionParams.kill,
+    feed_rate: reactionParams.feed,
+    time: ({tick}) => 0.001 * tick,
+    viewportWidth: regl.context('viewportWidth'),
+    viewportHeight: regl.context('viewportHeight'),
+    viewportRatio: ({viewportWidth, viewportHeight}) => viewportHeight / viewportWidth,
+    neighborX: ({viewportWidth}) => 1 / viewportWidth,
+    neighborY: ({viewportHeight}) => 1 / viewportHeight
   }
 })
 
@@ -101,9 +155,15 @@ const setupQuad = regl({
   
   void main() {
     vec4 s = texture2D(prevState, uv);
-    // gl_FragColor = vec4(clamp(vec3(s.g - s.r), 0.0, 1.0), 1.0);
-    gl_FragColor = s;
-    // gl_FragColor = vec4(1, 0, 0, 1);
+    vec4 sN = texture2D(prevState, uv + vec2(1.0, 1.0) / float(${radius}));
+    float color = (s.r - sN.r) - (s.g - sN.g);
+    // gl_FragColor = vec4(clamp(vec3(s.r - s.g), 0.0, 1.0), 1.0);
+    // gl_FragColor = s;
+    if(color == 0.0) {
+      gl_FragColor = vec4(vec3(255, 145, 206) / 255.0, 1);
+    } else {
+      gl_FragColor = vec4(color * color * color, sN.r * sN.r + s.g, sN.g + s.r, 1);
+    }
   }`,
 
   vert: `
